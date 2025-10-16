@@ -1,0 +1,27 @@
+{
+  "name": "pptx-export-mcp",
+  "version": "1.0.0",
+  "description": "Simple PPTX export MCP server (filesystem-based)",
+  "type": "module",
+  "main": "src/index.js",
+  "bin": {
+    "pptx-export-mcp": "src/index.js"
+  },
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "keywords": [
+    "mcp",
+    "pptx",
+    "powerpoint",
+    "export"
+  ],
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.20.0",
+    "pptxgenjs": "^4.0.1",
+    "uuid": "^13.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
