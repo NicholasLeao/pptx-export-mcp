@@ -1,9 +1,7 @@
 #!/usr/bin/env python3
 """PPTX Export MCP Server - Python implementation."""
 
-import asyncio
 import json
-import os
 import sys
 import uuid
 from pathlib import Path
@@ -11,10 +9,7 @@ from typing import Any, Dict, List, Optional
 import base64
 import io
 
-import mcp.server.stdio
-import mcp.types as types
-from mcp.server import NotificationOptions, Server
-from pydantic import AnyUrl
+from mcp.server.fastmcp import FastMCP
 from pptx import Presentation
 from pptx.util import Inches, Pt
 from pptx.enum.text import PP_ALIGN
@@ -378,195 +373,74 @@ async def write_pptx_to_file(pptx_content: bytes, filename: str) -> str:
         raise
 
 
-# Create MCP server
-server = Server("pptx-export-mcp")
+# Create FastMCP server
+mcp = FastMCP("pptx-export-mcp")
 
 
-@server.list_tools()
-async def handle_list_tools() -> List[types.Tool]:
-    """List available tools."""
-    return [
-        types.Tool(
-            name="pptx_export",
-            description="Export data to PowerPoint (PPTX) format with full support for text, tables, charts, images, and shapes",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "slides": {
-                        "type": "array",
-                        "description": "Array of slide objects containing elements to add",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "backgroundColor": {
-                                    "type": "string",
-                                    "description": "Slide background color (hex code without #)",
-                                },
-                                "elements": {
-                                    "type": "array",
-                                    "description": "Array of elements to add to the slide (text, table, chart, image, shape)",
-                                    "items": {
-                                        "type": "object",
-                                        "properties": {
-                                            "type": {
-                                                "type": "string",
-                                                "enum": ["text", "table", "chart", "image", "shape"],
-                                                "description": "Type of element to add",
-                                            },
-                                            "text": {
-                                                "type": ["string", "array"],
-                                                "description": "For type=text: String or array of text objects with formatting",
-                                            },
-                                            "rows": {
-                                                "type": "array",
-                                                "description": "For type=table: Array of rows (arrays of cell values or cell objects)",
-                                            },
-                                            "chartType": {
-                                                "type": "string",
-                                                "description": "For type=chart: Chart type (bar, line, pie, area, scatter, bubble, doughnut, radar)",
-                                            },
-                                            "chartData": {
-                                                "type": "array",
-                                                "description": "For type=chart: Array of data series with name, labels, values",
-                                            },
-                                            "path": {
-                                                "type": "string",
-                                                "description": "For type=image: Path to image file or base64 data URI",
-                                            },
-                                            "shapeType": {
-                                                "type": "string",
-                                                "description": "For type=shape: Shape type (rectangle, ellipse, roundRectangle, triangle, etc.)",
-                                            },
-                                            "options": {
-                                                "type": "object",
-                                                "description": "Element-specific options (positioning: x, y, w, h; formatting: fontSize, color, bold, etc.)",
-                                            },
-                                        },
-                                        "required": ["type"],
-                                    },
-                                },
-                            },
-                        },
-                    },
-                    "filename": {
-                        "type": "string",
-                        "description": "Filename for the exported file (without extension)",
-                        "default": "output",
-                    },
-                    "description": {
-                        "type": "string",
-                        "description": "Optional description of the file contents",
-                    },
-                    "options": {
-                        "type": "object",
-                        "description": "Presentation options",
-                        "properties": {
-                            "layout": {
-                                "type": "string",
-                                "enum": ["16x9", "16x10", "4x3"],
-                                "description": "Slide layout/aspect ratio",
-                                "default": "16x9",
-                            },
-                            "author": {
-                                "type": "string",
-                                "description": "Presentation author name",
-                            },
-                            "title": {
-                                "type": "string",
-                                "description": "Presentation title",
-                            },
-                            "subject": {
-                                "type": "string",
-                                "description": "Presentation subject",
-                            },
-                        },
-                    },
-                },
-                "required": ["slides"],
-            },
-        )
-    ]
-
-
-@server.call_tool()
-async def handle_call_tool(
-    name: str, arguments: Dict[str, Any]
-) -> List[types.TextContent]:
-    """Handle tool calls."""
-    if name == "pptx_export":
-        try:
-            slides = arguments.get("slides")
-            filename = arguments.get("filename", "output")
-            description = arguments.get("description")
-            options = arguments.get("options", {})
-            
-            # Validate input
-            if not slides or not isinstance(slides, list):
-                raise ValueError("Slides must be provided as an array of slide objects")
-            
-            if len(slides) == 0:
-                raise ValueError("At least one slide must be provided")
-            
-            # Generate PPTX
-            print("🔄 Generating PowerPoint from slide data...", file=sys.stderr)
-            pptx_content = await generate_pptx(slides, options)
-            
-            # Generate UUID and filename
-            file_uuid = str(uuid.uuid4())
-            sanitized_filename = "".join(c if c.isalnum() or c in "_-" else "_" for c in filename)
-            full_filename = f"{sanitized_filename}_{file_uuid}.pptx"
-            file_size = get_file_size_string(pptx_content)
-            
-            # Write PPTX to file system
-            filepath = await write_pptx_to_file(pptx_content, full_filename)
-            
-            layout = options.get('layout', '16x9')
-            print(f"✅ PPTX generated: {full_filename} ({file_size})", file=sys.stderr)
-            print(f"   Slides: {len(slides)}, Layout: {layout}", file=sys.stderr)
-            print(f"   Saved to: {filepath}", file=sys.stderr)
-            
-            # Return simplified response with essential information
-            result = {
-                "path": full_filename,
-                "filetype": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-                "filename": full_filename,
-                "filesize": file_size,
-            }
-            
-            return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
-            
-        except Exception as error:
-            print(f"Error processing PPTX export: {error}", file=sys.stderr)
-            
-            error_result = {
-                "success": False,
-                "error": str(error),
-            }
-            
-            return [types.TextContent(type="text", text=json.dumps(error_result, indent=2))]
+@mcp.tool()
+async def pptx_export(
+    slides: List[Dict[str, Any]],
+    filename: str = "output",
+    description: str = None,
+    options: Dict[str, Any] = None
+) -> dict:
+    """Export data to PowerPoint (PPTX) format with full support for text, tables, charts, images, and shapes.
     
-    raise ValueError(f"Unknown tool: {name}")
-
-
-async def main():
-    """Main server function."""
-    # Run the server using stdin/stdout streams
-    async with mcp.server.stdio.stdio_server() as (read_stream, write_stream):
-        print("PPTX Export MCP Server running on stdio", file=sys.stderr)
-        await server.run(
-            read_stream,
-            write_stream,
-            NotificationOptions(
-                tools_changed=False,
-                resources_changed=False,
-                prompts_changed=False
-            ),
-        )
+    Args:
+        slides: Array of slide objects containing elements to add
+        filename: Filename for the exported file (without extension)
+        description: Optional description of the file contents
+        options: Presentation options including layout, author, title, subject
+        
+    Returns:
+        Dictionary with export results including path and file info
+    """
+    try:
+        # Validate input
+        if not slides or not isinstance(slides, list):
+            raise ValueError("Slides must be provided as an array of slide objects")
+        
+        if len(slides) == 0:
+            raise ValueError("At least one slide must be provided")
+        
+        # Generate PPTX
+        print("🔄 Generating PowerPoint from slide data...", file=sys.stderr)
+        pptx_content = await generate_pptx(slides, options or {})
+        
+        # Generate UUID and filename
+        file_uuid = str(uuid.uuid4())
+        sanitized_filename = "".join(c if c.isalnum() or c in "_-" else "_" for c in filename)
+        full_filename = f"{sanitized_filename}_{file_uuid}.pptx"
+        file_size = get_file_size_string(pptx_content)
+        
+        # Write PPTX to file system
+        filepath = await write_pptx_to_file(pptx_content, full_filename)
+        
+        layout = (options or {}).get('layout', '16x9')
+        print(f"✅ PPTX generated: {full_filename} ({file_size})", file=sys.stderr)
+        print(f"   Slides: {len(slides)}, Layout: {layout}", file=sys.stderr)
+        print(f"   Saved to: {filepath}", file=sys.stderr)
+        
+        # Return simplified response with essential information
+        return {
+            "path": full_filename,
+            "filetype": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            "filename": full_filename,
+            "filesize": file_size,
+        }
+        
+    except Exception as error:
+        print(f"Error processing PPTX export: {error}", file=sys.stderr)
+        
+        return {
+            "success": False,
+            "error": str(error),
+        }
 
 
 def cli_main():
     """CLI entry point."""
-    asyncio.run(main())
+    mcp.run()
 
 
 if __name__ == "__main__":
