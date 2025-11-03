@@ -345,22 +345,22 @@ async def add_watermark(slide, prs):
     slide_height = prs.slide_height
     
     # Position watermark in bottom right with some padding
-    watermark_width = Inches(2)
-    watermark_height = Inches(0.3)
+    watermark_width = Inches(6)
+    watermark_height = Inches(0.8)
     left = slide_width - watermark_width - Inches(0.2)  # 0.2" padding from right
     top = slide_height - watermark_height - Inches(0.2)  # 0.2" padding from bottom
     
     # Add watermark text box
     watermark_textbox = slide.shapes.add_textbox(left, top, watermark_width, watermark_height)
     text_frame = watermark_textbox.text_frame
-    text_frame.text = "Powered by Protex AI"
+    text_frame.text = "This content has been generated using Protex Intelligence. The output is intended to assist but may not always be accurate or complete. Please verify important information before acting upon it."
     
     # Style the watermark text
     paragraph = text_frame.paragraphs[0]
     paragraph.alignment = PP_ALIGN.RIGHT
     
     for run in paragraph.runs:
-        run.font.size = Pt(10)
+        run.font.size = Pt(8)
         run.font.color.rgb = RGBColor(102, 102, 102)  # Gray color (#666666)
         run.font.name = "Arial"
 
