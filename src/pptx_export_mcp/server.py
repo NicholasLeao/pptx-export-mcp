@@ -138,6 +138,12 @@ async def generate_pptx(
             except Exception as element_error:
                 print(f"❌ Error adding {element_type} element: {element_error}", file=sys.stderr)
                 # Continue processing other elements
+        
+        # Add watermark to every slide
+        try:
+            await add_watermark(slide, prs)
+        except Exception as watermark_error:
+            print(f"❌ Error adding watermark: {watermark_error}", file=sys.stderr)
     
     # Save to bytes
     output = io.BytesIO()
@@ -330,6 +336,33 @@ async def add_shape_element(slide, element: Dict[str, Any], options: Dict[str, A
     
     if options.get('line'):
         shape.line.color.rgb = hex_to_rgb(options['line'])
+
+
+async def add_watermark(slide, prs):
+    """Add Protex AI watermark to the bottom right of the slide."""
+    # Calculate position based on slide dimensions
+    slide_width = prs.slide_width
+    slide_height = prs.slide_height
+    
+    # Position watermark in bottom right with some padding
+    watermark_width = Inches(2)
+    watermark_height = Inches(0.3)
+    left = slide_width - watermark_width - Inches(0.2)  # 0.2" padding from right
+    top = slide_height - watermark_height - Inches(0.2)  # 0.2" padding from bottom
+    
+    # Add watermark text box
+    watermark_textbox = slide.shapes.add_textbox(left, top, watermark_width, watermark_height)
+    text_frame = watermark_textbox.text_frame
+    text_frame.text = "Powered by Protex AI"
+    
+    # Style the watermark text
+    paragraph = text_frame.paragraphs[0]
+    paragraph.alignment = PP_ALIGN.RIGHT
+    
+    for run in paragraph.runs:
+        run.font.size = Pt(10)
+        run.font.color.rgb = RGBColor(102, 102, 102)  # Gray color (#666666)
+        run.font.name = "Arial"
 
 
 def get_file_size_string(content: bytes) -> str:
